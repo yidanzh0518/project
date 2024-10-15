@@ -1,11 +1,12 @@
 ---
+title: "Creating code embedding matrix"
+subtitle: "Midterm project for PHS7045"
 format: pdf
-author: John Doe
-title: My fancy presentation
-subtitle: For PHS 7045
+editor: visual
+author: Yidan Zhang
 ---
 
-# Section 1
+# Introduction 
 
 ## Sub-section 1
 
