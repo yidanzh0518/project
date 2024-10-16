@@ -40,42 +40,23 @@ The goal of this project is to implement the GloVe algorithm to create a package
 
     The data used to test the package is sourced from the [MIMIC-III clinical dataset](https://physionet.org/content/mimiciii/1.4/), a freely available database containing de-identified health-related data from patients who were admitted to the ICU at Beth Israel Deaconess Medical Center between 2001 and 2012. The dataset includes diagnoses recorded using the 9th version of the ICD coding system, specifically in a table named "DIAGNOSES_ICD." A brief summary of this data is provided below:
 
-```{r}
-#| message: false
-#| include: false
-library(knitr)
-library(data.table)
-```
+    ![Summary of the table](images/clipboard-684336803.png){width="354"}
 
-```{r}
-#| echo: false
+    The data used to generate this report is available on the repository and is a random sample of 100 subjects from the original data.
 
-# Read in data
-data <- fread("~/data/DIAGNOSES_ICD.csv")
-#data <- fread("https://raw.githubusercontent.com/yidanzh0518/project/main/data/DIAGNOSES_ICD.csv")
-
-# Calculate the number of patients and unique ICD9 codes, and the min/median/max diagnoses per patient
-summary_table <- data[, list(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
-ncount_summary <- data[, list(n_rows = .N), by = SUBJECT_ID][
-      , .(
-        ncount_min = min(n_rows),
-        ncount_median = median(n_rows),
-        ncount_max = max(n_rows)
-      )
-    ]
-summary_table <- cbind(summary_table, ncount_summary)
-    
-# Build a table with appropriate row names and format it with kable
-summary_table_formatted <- data.frame(
-      Statistic = c("Number of Patients", "Number of ICD9 Codes", "Diagnosis/Patient-min","Diagnosis/Patient-median","Diagnosis/Patient-max"),
-      Value = c(summary_table$npatient, summary_table$ncode, summary_table$ncount_min,summary_table$ncount_median,summary_table$ncount_max)
-    )
-
-    # Display the table using kable
-    kable(summary_table_formatted, col.names = c("Statistic", "Value"), row.names = FALSE,align="cc")
-```
+    ```{r}
+    #| message: false
+    #| include: false
+    library(knitr)
+    library(data.table)
+    ```
 
 -   Function
+
+    ```{r}
+
+
+    ```
 
 -   The execution of the functions
 
