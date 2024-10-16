@@ -279,4 +279,4 @@ microbenchmark(
 
 # Conclusion 
 
-This project will be completed under the current progress, with further optimization aimed at reducing computational overhead. So far, we have incorporated data.table, vectorization, and timing techniques learned during the first half of the semester. Additional optimization approaches will also be explored as the project continues.
+This project will be completed under the current progress, with further optimization aimed at reducing computational overhead. So far, we have incorporated data.table, vectorization, and timing techniques learned during the first half of the semester. Additional optimization approaches will also be explored as the project continue.
