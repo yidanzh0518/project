@@ -42,27 +42,30 @@ The goal of this project is to implement the GloVe algorithm to create a package
 
 ```{r}
 #| message: false
+#| include: false
 library(knitr)
 library(data.table)
 ```
 
 ```{r}
 #| echo: false
+
+# Read in data
 data <- fread(file="~/project/data/DIAGNOSES_ICD.csv")
 
-    # Calculate the number of patients and unique ICD9 codes, and the min/median/max diagnoses per patient
-    summary_table <- data[, list(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
-
-    ncount_summary <- data[, list(n_rows = .N), by = SUBJECT_ID][
+# Calculate the number of patients and unique ICD9 codes, and the min/median/max diagnoses per patient
+summary_table <- data[, list(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
+ncount_summary <- data[, list(n_rows = .N), by = SUBJECT_ID][
       , .(
         ncount_min = min(n_rows),
         ncount_median = median(n_rows),
         ncount_max = max(n_rows)
       )
     ]
-    summary_table <- cbind(summary_table, ncount_summary)
-    # Create a table with row names and format it with kable
-    summary_table_formatted <- data.frame(
+summary_table <- cbind(summary_table, ncount_summary)
+    
+# Build a table with appropriate row names and format it with kable
+summary_table_formatted <- data.frame(
       Statistic = c("Number of Patients", "Number of ICD9 Codes", "Diagnosis/Patient-min","Diagnosis/Patient-median","Diagnosis/Patient-max"),
       Value = c(summary_table$npatient, summary_table$ncode, summary_table$ncount_min,summary_table$ncount_median,summary_table$ncount_max)
     )
