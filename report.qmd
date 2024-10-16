@@ -51,7 +51,8 @@ library(data.table)
 #| echo: false
 
 # Read in data
-data <- fread(file="~/project/data/DIAGNOSES_ICD.csv")
+data <- fread("~/data/DIAGNOSES_ICD.csv")
+#data <- fread("https://raw.githubusercontent.com/yidanzh0518/project/main/data/DIAGNOSES_ICD.csv")
 
 # Calculate the number of patients and unique ICD9 codes, and the min/median/max diagnoses per patient
 summary_table <- data[, list(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
@@ -74,7 +75,7 @@ summary_table_formatted <- data.frame(
     kable(summary_table_formatted, col.names = c("Statistic", "Value"), row.names = FALSE,align="cc")
 ```
 
--   One or more functions, and
+-   Function
 
 -   The execution of the functions
 
