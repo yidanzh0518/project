@@ -34,7 +34,7 @@ The goal of this project is to implement the GloVe algorithm to create a package
 
     One approach to help users determine the optimal embedding vector length is to evaluate the performance of the embedding matrix by predicting phecode-based classification accuracy. Phecodes group ICD codes into clinically meaningful categories, and an ideal embedding matrix would accurately capture diagnostic information, allowing for precise classification aligned with phecodes. By assessing the AUC (Area Under the Curve) for different vector lengths, users can identify the length that maximizes performance, minimizing information loss and avoiding overfitting.
 
-## Preliminary Result
+# Preliminary Result
 
 -   Data
 
@@ -47,26 +47,22 @@ The goal of this project is to implement the GloVe algorithm to create a package
     ```{r}
     #| message: false
     #| include: false
-    library(knitr)
     library(data.table)
+    library(tidyverse)
     ```
 
 -   Function
 
-    ```{r}
-
-
-    ```
-
--   The execution of the functions
+    The first step is to create a function for the co-occurrence matrix, firstly, we can create a function without using any idea of optimization, and that is simply create an empty matrix with dimension as the number of unique code in the data, and go through each patient for the count.
 
 ```{r}
-create_cooccurrence_matrix <- function(data,id, code, time, window = NA) {
-  # Get unique ICD codes
+#| echo: false
+cooccur_old <- function(data, id, code, time, window = NA) {
+  # Get unique ICD codes from the data to 
   unique_codes <- unique(data[[code]])
   code_count <- length(unique_codes)
   
-  # Initialize an empty co-occurrence matrix
+  # Build a matrix filled with 0 as a start point for the counts
   cooccurrence_matrix <- matrix(0, nrow = code_count, ncol = code_count)
   rownames(cooccurrence_matrix) <- unique_codes
   colnames(cooccurrence_matrix) <- unique_codes
@@ -75,7 +71,14 @@ create_cooccurrence_matrix <- function(data,id, code, time, window = NA) {
   patients <- unique(data[[id]])
   for (patient in patients) {
     # Get data for the specific patient and sort by time column (SEQ_NUM)
-    patient_data <- data %>% filter(data[[id]] == patient) %>% arrange(data[[time]])
+    patient_data <- data %>%
+      filter(!!sym(id) == patient) %>%
+      arrange(!!sym(time))
+    
+    # Skip patients with fewer than 2 observations
+    if (nrow(patient_data) < 2) {
+      next  # Skip this patient if there's only one or no observations
+    }
     
     # If window is NA, set window to be the number of rows for this patient
     if (is.na(window)) {
@@ -102,62 +105,89 @@ create_cooccurrence_matrix <- function(data,id, code, time, window = NA) {
   return(cooccurrence_matrix)
 }
 
-# Example usage
-# Assuming 'data' is your dataset containing custom column names
-
-# Static window example
-#cooccurrence_matrix_static <- create_cooccurrence_matrix(data, code = "ICD9_CODE", id = "SUBJECT_ID", time = "SEQ_NUM", window = 5)
-
-# Dynamic window example
-#cooccurrence_matrix_dynamic <- create_cooccurrence_matrix(data, icd_col = "ICD9_CODE", id_col = "SUBJECT_ID", time = "SEQ_NUM", window = NA)
+# Example usage:
+# matrix <- cooccur_old(data = your_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA)
 
 
 ```
 
 ```{r}
-# 这一段code没有vectorization
-create_cooccurrence_matrix_dt <- function(data, window = NA) {
-  # Ensure the input data is a data.table
+library(data.table)
+
+cooccur_optimized <- function(data, id, code, time, window = NA) {
+  # Convert to data.table for faster processing
   setDT(data)
   
-  # Get unique ICD codes
-  unique_codes <- unique(data$ICD9_CODE)
+  # Get unique ICD codes and map them to matrix indices
+  unique_codes <- unique(data[[code]])
   code_count <- length(unique_codes)
+  code_to_index <- setNames(seq_along(unique_codes), unique_codes)
   
   # Initialize an empty co-occurrence matrix
   cooccurrence_matrix <- matrix(0, nrow = code_count, ncol = code_count)
   rownames(cooccurrence_matrix) <- unique_codes
   colnames(cooccurrence_matrix) <- unique_codes
   
-  # Iterate through each patient
-  patients <- unique(data$SUBJECT_ID)
+  # Process each patient
+  patients <- unique(data[[id]])
+  
   for (patient in patients) {
-    # Get data for the specific patient and sort by SEQ_NUM
-    patient_data <- data[SUBJECT_ID == patient][order(SEQ_NUM)]
+    # Filter and sort data for the patient
+    patient_data <- data[get(id) == patient, .(time_value = get(time), code_value = get(code))][order(time_value)]
     
-    # If window is NA, set window to be the number of rows for this patient
-    if (is.na(window)) {
-      patient_window <- nrow(patient_data)
-    } else {
-      patient_window <- window
-    }
+    # Skip patients with fewer than 2 observations
+    if (nrow(patient_data) < 2) next
     
-    # For each ICD code in patient data, compare with others within the window
-    for (i in 1:(nrow(patient_data) - 1)) {
-      for (j in (i + 1):nrow(patient_data)) {
-        if (patient_data$SEQ_NUM[j] - patient_data$SEQ_NUM[i] > patient_window) break
-        
-        code_i <- patient_data$ICD9_CODE[i]
-        code_j <- patient_data$ICD9_CODE[j]
-        
-        # Update the co-occurrence matrix
-        cooccurrence_matrix[code_i, code_j] <- cooccurrence_matrix[code_i, code_j] + 1
-        cooccurrence_matrix[code_j, code_i] <- cooccurrence_matrix[code_j, code_i] + 1
-      }
+    # Set window size
+    patient_window <- if (is.na(window)) nrow(patient_data) else window
+    
+    # Vectorized computation of co-occurrence within the window
+    time_diffs <- outer(patient_data$time_value, patient_data$time_value, "-")
+    within_window <- which(time_diffs >= 0 & time_diffs <= patient_window, arr.ind = TRUE)
+    
+    # Update the co-occurrence matrix
+    for (pair in 1:nrow(within_window)) {
+      i <- within_window[pair, 1]
+      j <- within_window[pair, 2]
+      if (i >= j) next  # Avoid redundant pairs or self-pairs
+      
+      code_i <- patient_data$code_value[i]
+      code_j <- patient_data$code_value[j]
+      
+      index_i <- code_to_index[[code_i]]
+      index_j <- code_to_index[[code_j]]
+      
+      # Update co-occurrence counts
+      cooccurrence_matrix[index_i, index_j] <- cooccurrence_matrix[index_i, index_j] + 1
+      cooccurrence_matrix[index_j, index_i] <- cooccurrence_matrix[index_j, index_i] + 1
     }
   }
   
   return(cooccurrence_matrix)
 }
+
+```
+
+-   
+
+-   The execution of the functions
+
+```{r}
+data <- fread("https://raw.githubusercontent.com/yidanzh0518/project/main/data/sample_data.csv")
+
+
+
+# Benchmark both functions
+benchmark_results <- microbenchmark(
+  old_version = cooccur_old(data = sample_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+  optimized_version = cooccur_optimized(data = sample_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+  times = 5  # Number of times to run each function for more accurate comparison
+)
+
+# Print the benchmark results
+print(benchmark_results)
+
+# Optional: Plot the results for a visual comparison
+boxplot(benchmark_results)
 
 ```
