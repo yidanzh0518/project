@@ -42,18 +42,19 @@ The goal of this project is to implement the GloVe algorithm to create a package
 
     ![Summary of the table](images/clipboard-684336803.png){width="354"}
 
-    The data used to generate this report is available on the repository and is a random sample of 100 subjects from the original data.
+    The data used for this report is available in the repository and consists of a random sample of 1,000 subjects, resulting in a total of 13,623 observations from the original dataset.
 
     ```{r}
     #| message: false
     #| include: false
     library(data.table)
     library(tidyverse)
+    library(microbenchmark)
     ```
 
 -   Function
 
-    The first step is to create a function for the co-occurrence matrix, firstly, we can create a function without using any idea of optimization, and that is simply create an empty matrix with dimension as the number of unique code in the data, and go through each patient for the count.
+    The first step is to create a function for generating the co-occurrence matrix. Initially, we can implement a simple, non-optimized version. This is simply create an initial matrix with dimensions corresponding to the number of unique codes in the dataset and iterating through each patient to count occurrences. (code not displayed in the pdf file)
 
 ```{r}
 #| echo: false
@@ -70,16 +71,18 @@ cooccur_old <- function(data, id, code, time, window = NA) {
   # Iterate through each patient
   patients <- unique(data[[id]])
   for (patient in patients) {
-    # Get data for the specific patient and sort by time column (SEQ_NUM)
+    # Get data for the specific patient and sort by time column 
     patient_data <- data %>%
       filter(!!sym(id) == patient) %>%
       arrange(!!sym(time))
     
+    # For patient who how only one row of record, there is no co-occurrence code within the patient
     # Skip patients with fewer than 2 observations
     if (nrow(patient_data) < 2) {
       next  # Skip this patient if there's only one or no observations
     }
     
+    # To allow dynamic need of the user, allow function to have patient-specific window
     # If window is NA, set window to be the number of rows for this patient
     if (is.na(window)) {
       patient_window <- nrow(patient_data)
@@ -105,17 +108,16 @@ cooccur_old <- function(data, id, code, time, window = NA) {
   return(cooccurrence_matrix)
 }
 
-# Example usage:
-# matrix <- cooccur_old(data = your_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA)
-
-
 ```
 
+Additionally, the code is initially optimized by data.table and vectorization (code not displayed in the pdf file)
+
 ```{r}
+#| echo: false
 library(data.table)
 
 cooccur_optimized <- function(data, id, code, time, window = NA) {
-  # Convert to data.table for faster processing
+  # Convert the input data into data.table for faster processing
   setDT(data)
   
   # Get unique ICD codes and map them to matrix indices
@@ -141,53 +143,140 @@ cooccur_optimized <- function(data, id, code, time, window = NA) {
     # Set window size
     patient_window <- if (is.na(window)) nrow(patient_data) else window
     
-    # Vectorized computation of co-occurrence within the window
-    time_diffs <- outer(patient_data$time_value, patient_data$time_value, "-")
-    within_window <- which(time_diffs >= 0 & time_diffs <= patient_window, arr.ind = TRUE)
-    
-    # Update the co-occurrence matrix
-    for (pair in 1:nrow(within_window)) {
-      i <- within_window[pair, 1]
-      j <- within_window[pair, 2]
-      if (i >= j) next  # Avoid redundant pairs or self-pairs
-      
-      code_i <- patient_data$code_value[i]
-      code_j <- patient_data$code_value[j]
-      
-      index_i <- code_to_index[[code_i]]
-      index_j <- code_to_index[[code_j]]
-      
-      # Update co-occurrence counts
-      cooccurrence_matrix[index_i, index_j] <- cooccurrence_matrix[index_i, index_j] + 1
-      cooccurrence_matrix[index_j, index_i] <- cooccurrence_matrix[index_j, index_i] + 1
+    # Loop over the patient data to compute co-occurrence within the window
+    for (i in 1:(nrow(patient_data) - 1)) {
+      for (j in (i + 1):nrow(patient_data)) {
+        # Break if the time difference exceeds the window
+        if (patient_data$time_value[j] - patient_data$time_value[i] > patient_window) break
+        
+        code_i <- patient_data$code_value[i]
+        code_j <- patient_data$code_value[j]
+        
+        index_i <- code_to_index[[code_i]]
+        index_j <- code_to_index[[code_j]]
+        
+        # Update co-occurrence counts
+        cooccurrence_matrix[index_i, index_j] <- cooccurrence_matrix[index_i, index_j] + 1
+        cooccurrence_matrix[index_j, index_i] <- cooccurrence_matrix[index_j, index_i] + 1
+      }
     }
   }
   
   return(cooccurrence_matrix)
 }
 
+
 ```
 
--   
-
--   The execution of the functions
+Beyond step one, other functions also have been written out as a manuscript (code not displayed in pdf file) and will be further optimized before the project finalized.
 
 ```{r}
+#| echo: false
+get_SG <- function(matrix){
+  marg_word = coccur %>% group_by(code1) %>% summarise(marg=sum(count))
+  marg_context = coccur %>% group_by(code2) %>% summarise(marg=sum(count))
+  names(marg_word) = c("code","marg_count")
+  names(marg_context) = c("code","marg_count")
+  D = sum(as.numeric(coccur$count))
+  return(list(marg_word=marg_word,marg_context=marg_context,D=D))
+}
+```
+
+```{r}
+#| echo: false
+construct_pmi <- function(coccur,singletons,my.smooth=0.75){
+  names(coccur) = c("code1","code2","joint_count")
+  ind <- which(coccur$code1!=coccur$code2 &
+                 coccur$code1%in%singletons$marg_word$code & 
+                 coccur$code2%in%singletons$marg_context$code)
+  coccur = coccur[ind,]
+  
+  coccur$joint_count = as.numeric(coccur$joint_count)
+  singletons$marg_word$marg_count = as.numeric(singletons$marg_word$marg_count)
+  singletons$marg_context$marg_count = as.numeric(singletons$marg_context$marg_count)
+  
+  pmi_df <- coccur %>%
+    inner_join(singletons$marg_word,by=c("code1" = "code")) %>%
+    dplyr::rename(W=marg_count) %>%
+    inner_join(singletons$marg_context,by=c("code2" = "code")) %>%
+    dplyr::rename(C=marg_count) %>%
+    mutate(  PMI = joint_count/(W * ((C/singletons$D)^my.smooth))  ) %>%
+    mutate(PMI=log(PMI)) 
+  # %>%select(code1,code2,PMI)
+  return(pmi_df)
+}
+```
+
+```{r}
+#| echo: false
+construct_sppmi <- function(pmi,k=10) {
+  sppmi_df <- pmi %>%
+    mutate(SPPMI = pmax(PMI - log(k),0))%>%  
+    select(code1,code2,SPPMI)
+  
+  # sppmi_df <- pmi %>%
+  #   mutate(SPPMI = PMI) 
+  
+  all_words <- unique(c(sppmi_df$code1,sppmi_df$code2))
+  word_2_index <- 1:length(all_words)
+  names(word_2_index) <- all_words
+  
+  i <- as.numeric(word_2_index[as.character(sppmi_df$code1)])
+  j <- as.numeric(word_2_index[as.character(sppmi_df$code2)])
+  x <- as.numeric(sppmi_df$SPPMI)
+  
+  ## Remove 0s ##
+  non_zero <- which(x != 0)
+  i <- i[non_zero]
+  j <- j[non_zero]
+  x <- x[non_zero]
+  if(max(i)<length(all_words)|max(j)<length(all_words)){
+    i=c(i,length(all_words))
+    j=c(j,length(all_words))
+    x=c(x,0)
+  }
+  
+  ism <- c(i,j)
+  jsm <- c(j,i)
+  xsm <- c(x,x)
+  sppmi <- sparseMatrix(i=ism,j=jsm,x=xsm)
+  rownames(sppmi) <- all_words
+  colnames(sppmi) <- all_words
+  return(sppmi)
+}
+```
+
+-   The execution of the functions and performance comparison
+
+    Since the diagnoses in the dataset are not time-stamped, it is impossible to determine the exact order of the diagnosis codes. Therefore, it is reasonable to treat all ICD codes within each patient as co-occurring to apply function as below:
+
+    cooccur_optimized(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA)
+
+    The output of the function is the count for each code pair:
+
+```{r}
+#| echo:  false
+#| warning: false
 data <- fread("https://raw.githubusercontent.com/yidanzh0518/project/main/data/sample_data.csv")
+# The execution of the functions
+matrix_op <- cooccur_optimized(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA)
+head(matrix_op[1:8,1:8])
+```
 
+To evaluate performance, the `microbenchmark()` function was used to compare the execution time of both functions on the sample data.
 
-
-# Benchmark both functions
-benchmark_results <- microbenchmark(
-  old_version = cooccur_old(data = sample_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
-  optimized_version = cooccur_optimized(data = sample_data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+```{r}
+#| echo:  false
+#| warning: false
+# Benchmark on both functions to compare performance
+microbenchmark(
+  initial = cooccur_old(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+  optimized = cooccur_optimized(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
   times = 5  # Number of times to run each function for more accurate comparison
 )
 
-# Print the benchmark results
-print(benchmark_results)
-
-# Optional: Plot the results for a visual comparison
-boxplot(benchmark_results)
-
 ```
+
+# Conclusion 
+
+This project will be completed under the current progress, with further optimization aimed at reducing computational overhead. So far, we have incorporated data.table, vectorization, and timing techniques learned during the first half of the semester. Additional optimization approaches will also be explored as the project continues.
