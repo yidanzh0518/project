@@ -41,17 +41,19 @@ The goal of this project is to implement the GloVe algorithm to create a package
     The data used to test the package is sourced from the [MIMIC-III clinical dataset](https://physionet.org/content/mimiciii/1.4/), a freely available database containing de-identified health-related data from patients who were admitted to the ICU at Beth Israel Deaconess Medical Center between 2001 and 2012. The dataset includes diagnoses recorded using the 9th version of the ICD coding system, specifically in a table named "DIAGNOSES_ICD." A brief summary of this data is provided below:
 
 ```{r}
+#| message: false
 library(knitr)
 library(data.table)
 ```
 
-    ```{r}
-    #| echo: false
+```{r}
+#| echo: false
+data <- fread(file="~/project/data/DIAGNOSES_ICD.csv")
 
     # Calculate the number of patients and unique ICD9 codes, and the min/median/max diagnoses per patient
-    summary_table <- data[, .(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
+    summary_table <- data[, list(npatient = uniqueN(SUBJECT_ID),ncode = uniqueN(ICD9_CODE))]
 
-    ncount_summary <- data[, .(n_rows = .N), by = SUBJECT_ID][
+    ncount_summary <- data[, list(n_rows = .N), by = SUBJECT_ID][
       , .(
         ncount_min = min(n_rows),
         ncount_median = median(n_rows),
@@ -72,11 +74,6 @@ library(data.table)
 -   One or more functions, and
 
 -   The execution of the functions
-
-```{r}
-#| label: some-code
-library(data.table)
-```
 
 ```{r}
 create_cooccurrence_matrix <- function(data,id, code, time, window = NA) {
@@ -124,13 +121,12 @@ create_cooccurrence_matrix <- function(data,id, code, time, window = NA) {
 # Assuming 'data' is your dataset containing custom column names
 
 # Static window example
-cooccurrence_matrix_static <- create_cooccurrence_matrix(data, code = "ICD9_CODE", id = "SUBJECT_ID", time = "SEQ_NUM", window = 5)
+#cooccurrence_matrix_static <- create_cooccurrence_matrix(data, code = "ICD9_CODE", id = "SUBJECT_ID", time = "SEQ_NUM", window = 5)
 
 # Dynamic window example
-cooccurrence_matrix_dynamic <- create_cooccurrence_matrix(data, icd_col = "ICD9_CODE", id_col = "SUBJECT_ID", time = "SEQ_NUM", window = NA)
+#cooccurrence_matrix_dynamic <- create_cooccurrence_matrix(data, icd_col = "ICD9_CODE", id_col = "SUBJECT_ID", time = "SEQ_NUM", window = NA)
 
-print(cooccurrence_matrix_static)
-print(cooccurrence_matrix_dynamic)
+
 ```
 
 ```{r}
@@ -178,13 +174,5 @@ create_cooccurrence_matrix_dt <- function(data, window = NA) {
   
   return(cooccurrence_matrix)
 }
-
-
-```
-
-```{r}
-#| echo: false
-#| include: false
-data <- fread(file="~/project/data/DIAGNOSES_ICD.csv")
 
 ```
