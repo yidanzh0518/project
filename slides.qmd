@@ -1,19 +1,191 @@
 ---
-title: My fancy presentation
-subtitle: For PHS 7045
-author: John Doe
+title: "Creating code embedding matrix"
+subtitle: For PHS7045
+author: Yidan Zhang
 format: revealjs
 embed-resources: true
 ---
 
-# Section 1
+## Introduction {.smaller}
 
-## Slide 1
+-   Word embedding has become a significant topic in natural language processing.
 
+-   GloVe (Global Vectors for Word Representation) is a method that incorporates global statistical information by capturing word-to-word co-occurrence patterns across the entire corpus.
+
+-   One application of embedding in healthcare research is in medical codes (ICD for diagnosis, CPT for procedure and etc.), which can provide valuable support for downstream analysis.
+
+-   The goal is to develop a package that implements the GloVe algorithm to generate word embedding matrices from EHR data.
+
+## Solution Plan {.smaller}
+
+-   The most computationally expensive part of the GloVe algorithm is constructing the co-occurrence matrix. For a given context window, the function must iterate through each patient to count code pair co-occurrences.
+
+-   The second step is to use the co-occurrence matrix to create the pointwise mutual information (PMI) matrix, which quantifies the association between a word and a context word. SPPMI, another widely used method in machine learning, is also implemented through a function. Both of them is build on another function that obtain the joint and singleton frequency of the co-occurrence counts.
+
+-   The third step is to use truncate singular value decomposition (SVD) to factorize the PMI/SPPMI matrix and generate lower-dimensional embeddings for the codes based on a user defined length of singular values and vectors.
+
+-   One approach to help users who work on ICD codes to determine the optimal embedding vector length is to evaluate the performance of the embedding matrix by predicting phecode-based classification accuracy.
+
+## Preliminary Result {.smaller}
+
+-   The data used to test the package is the 'diagnosis_icd' file from the MIMIC-III clinical dataset.
+
+    ![](images/clipboard-684336803.png){width="471"}
+
+<!-- -->
+
+-   The data employed for this presentation is available in the repository and consists of a random sample of 1,000 subjects, resulting in a total of 13,623 observations from the original dataset.
+
+## Function
+
+cooccur_optimized (data, id, code, time, window = NA)
+
+get_SG (matrix)
+
+construct_pmi (coccur,singletons,my.smooth)
+
+construct_sppmi (pmi,k)
 
 ```{r}
-#| label: some-code
-library(MASS)
-library(epiworldR)
+#| echo: false
+#| message: false 
+library(data.table)
+library(microbenchmark)
+library(tidyverse)
+```
+
+```{r}
+#| echo: false
+cooccur_old <- function(data, id, code, time, window = NA) {
+  # Get unique ICD codes from the data to 
+  unique_codes <- unique(data[[code]])
+  code_count <- length(unique_codes)
+  
+  # Build a matrix filled with 0 as a start point for the counts
+  cooccurrence_matrix <- matrix(0, nrow = code_count, ncol = code_count)
+  rownames(cooccurrence_matrix) <- unique_codes
+  colnames(cooccurrence_matrix) <- unique_codes
+  
+  # Iterate through each patient
+  patients <- unique(data[[id]])
+  for (patient in patients) {
+    # Get data for the specific patient and sort by time column 
+    patient_data <- data %>%
+      filter(!!sym(id) == patient) %>%
+      arrange(!!sym(time))
+    
+    # For patient who how only one row of record, there is no co-occurrence code within the patient
+    # Skip patients with fewer than 2 observations
+    if (nrow(patient_data) < 2) {
+      next  # Skip this patient if there's only one or no observations
+    }
+    
+    # To allow dynamic need of the user, allow function to have patient-specific window
+    # If window is NA, set window to be the number of rows for this patient
+    if (is.na(window)) {
+      patient_window <- nrow(patient_data)
+    } else {
+      patient_window <- window
+    }
+    
+    # For each ICD code in patient data, compare with others within the window
+    for (i in 1:(nrow(patient_data) - 1)) {
+      for (j in (i + 1):nrow(patient_data)) {
+        if (patient_data[[time]][j] - patient_data[[time]][i] > patient_window) break
+        
+        code_i <- patient_data[[code]][i]
+        code_j <- patient_data[[code]][j]
+        
+        # Update the co-occurrence matrix
+        cooccurrence_matrix[code_i, code_j] <- cooccurrence_matrix[code_i, code_j] + 1
+        cooccurrence_matrix[code_j, code_i] <- cooccurrence_matrix[code_j, code_i] + 1
+      }
+    }
+  }
+  
+  return(cooccurrence_matrix)
+}
+
+```
+
+```{r}
+#| echo: false
+library(data.table)
+
+cooccur_optimized <- function(data, id, code, time, window = NA) {
+  # Convert the input data into data.table for faster processing
+  setDT(data)
+  
+  # Get unique ICD codes and map them to matrix indices
+  unique_codes <- unique(data[[code]])
+  code_count <- length(unique_codes)
+  code_to_index <- setNames(seq_along(unique_codes), unique_codes)
+  
+  # Initialize an empty co-occurrence matrix
+  cooccurrence_matrix <- matrix(0, nrow = code_count, ncol = code_count)
+  rownames(cooccurrence_matrix) <- unique_codes
+  colnames(cooccurrence_matrix) <- unique_codes
+  
+  # Process each patient
+  patients <- unique(data[[id]])
+  
+  for (patient in patients) {
+    # Filter and sort data for the patient
+    patient_data <- data[get(id) == patient, .(time_value = get(time), code_value = get(code))][order(time_value)]
+    
+    # Skip patients with fewer than 2 observations
+    if (nrow(patient_data) < 2) next
+    
+    # Set window size
+    patient_window <- if (is.na(window)) nrow(patient_data) else window
+    
+    # Loop over the patient data to compute co-occurrence within the window
+    for (i in 1:(nrow(patient_data) - 1)) {
+      for (j in (i + 1):nrow(patient_data)) {
+        # Break if the time difference exceeds the window
+        if (patient_data$time_value[j] - patient_data$time_value[i] > patient_window) break
+        
+        code_i <- patient_data$code_value[i]
+        code_j <- patient_data$code_value[j]
+        
+        index_i <- code_to_index[[code_i]]
+        index_j <- code_to_index[[code_j]]
+        
+        # Update co-occurrence counts
+        cooccurrence_matrix[index_i, index_j] <- cooccurrence_matrix[index_i, index_j] + 1
+        cooccurrence_matrix[index_j, index_i] <- cooccurrence_matrix[index_j, index_i] + 1
+      }
+    }
+  }
+  
+  return(cooccurrence_matrix)
+}
+
+```
+
+A sample of the co-occurrence function's output is shown below:
+
+```{r}
+#| echo:  false
+#| warning: false
+data <- fread("https://raw.githubusercontent.com/yidanzh0518/project/main/data/sample_data.csv")
+# The execution of the functions
+matrix_op <- cooccur_optimized(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA)
+head(matrix_op[1:8,1:8])
+```
+
+## Optimization
+
+The aim for the package is to adapt the methods we learned in this class to optimize the functions and reduce the computational overhead.
+
+```{r}
+#| echo:  false
+#| warning: false
+# Benchmark on both functions to compare performance
+microbenchmark(
+  initial = cooccur_old(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+  optimized = cooccur_optimized(data = data, id = "SUBJECT_ID", code = "ICD9_CODE", time = "SEQ_NUM", window = NA),
+  times = 5  # Number of times to run each function for more accurate comparison
+)
 
 ```
