@@ -14,7 +14,7 @@ embed-resources: true
 
 -   One application of embedding in healthcare research is in medical codes (ICD for diagnosis, CPT for procedure and etc.), which can provide valuable support for downstream analysis.
 
--   The goal is to develop a package that implements the GloVe algorithm to generate word embedding matrices from EHR data.
+-   The goal is to develop a package that implements the GloVe algorithm to generate code embedding matrices for EHR data.
 
 ## Solution Plan {.smaller}
 
@@ -176,7 +176,7 @@ head(matrix_op[1:8,1:8])
 
 ## Optimization
 
-The aim for the package is to adapt the methods we learned in this class to optimize the functions and reduce the computational overhead.
+The goal of the package is not only to provide practical functions but also to incorporate the optimization techniques we learned in this class, reducing computational overhead and enhancing performance.
 
 ```{r}
 #| echo:  false
