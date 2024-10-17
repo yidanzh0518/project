@@ -20,7 +20,7 @@ embed-resources: true
 
 -   The most computationally expensive part of the GloVe algorithm is constructing the co-occurrence matrix. For a given context window, the function must iterate through each patient to count code pair co-occurrences.
 
--   The second step is to use the co-occurrence matrix to create the pointwise mutual information (PMI) matrix, which quantifies the association between a word and a context word. SPPMI, another widely used method in machine learning, is also implemented through a function. Both of them is build on another function that obtain the joint and singleton frequency of the co-occurrence counts.
+-   The second step is to use the co-occurrence matrix to create the pointwise mutual information (PMI) or SPPMI (shifted positive PMI) matrix.
 
 -   The third step is to use truncate singular value decomposition (SVD) to factorize the PMI/SPPMI matrix and generate lower-dimensional embeddings for the codes based on a user defined length of singular values and vectors.
 

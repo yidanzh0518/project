@@ -1161,14 +1161,14 @@ Yidan Zhang
 <li><p>Word embedding has become a significant topic in natural language processing.</p></li>
 <li><p>GloVe (Global Vectors for Word Representation) is a method that incorporates global statistical information by capturing word-to-word co-occurrence patterns across the entire corpus.</p></li>
 <li><p>One application of embedding in healthcare research is in medical codes (ICD for diagnosis, CPT for procedure and etc.), which can provide valuable support for downstream analysis.</p></li>
-<li><p>The goal is to develop a package that implements the GloVe algorithm to generate word embedding matrices from EHR data.</p></li>
+<li><p>The goal is to develop a package that implements the GloVe algorithm to generate code embedding matrices for EHR data.</p></li>
 </ul>
 </section>
 <section id="solution-plan" class="slide level2 smaller">
 <h2>Solution Plan</h2>
 <ul>
 <li><p>The most computationally expensive part of the GloVe algorithm is constructing the co-occurrence matrix. For a given context window, the function must iterate through each patient to count code pair co-occurrences.</p></li>
-<li><p>The second step is to use the co-occurrence matrix to create the pointwise mutual information (PMI) matrix, which quantifies the association between a word and a context word. SPPMI, another widely used method in machine learning, is also implemented through a function. Both of them is build on another function that obtain the joint and singleton frequency of the co-occurrence counts.</p></li>
+<li><p>The second step is to use the co-occurrence matrix to create the pointwise mutual information (PMI) or SPPMI (shifted positive PMI) matrix.</p></li>
 <li><p>The third step is to use truncate singular value decomposition (SVD) to factorize the PMI/SPPMI matrix and generate lower-dimensional embeddings for the codes based on a user defined length of singular values and vectors.</p></li>
 <li><p>One approach to help users who work on ICD codes to determine the optimal embedding vector length is to evaluate the performance of the embedding matrix by predicting phecode-based classification accuracy.</p></li>
 </ul>
@@ -1205,13 +1205,13 @@ V3000     0     2   7     3   15     2    2     6
 </section>
 <section id="optimization" class="slide level2">
 <h2>Optimization</h2>
-<p>The aim for the package is to adapt the methods we learned in this class to optimize the functions and reduce the computational overhead.</p>
+<p>The goal of the package is not only to provide practical functions but also to incorporate the optimization techniques we learned in this class, reducing computational overhead and enhancing performance.</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
 <pre><code>Unit: seconds
-      expr       min        lq      mean    median        uq       max neval
-   initial 10.550347 10.813815 10.874280 10.872635 10.922911 11.211695     5
- optimized  2.849325  2.868148  2.889801  2.889248  2.898566  2.943719     5</code></pre>
+      expr       min       lq      mean    median        uq       max neval
+   initial 10.526573 10.57881 10.638930 10.590525 10.661386 10.837356     5
+ optimized  2.886455  2.90188  3.071169  2.915126  2.971536  3.680846     5</code></pre>
 </div>
 </div>
 <div class="quarto-auto-generated-content">
