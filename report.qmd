@@ -91,10 +91,12 @@ cooccur_old <- function(data, id, code, time, window = NA) {
     }
     
     # For each ICD code in patient data, compare with others within the window
+    # I am guessing that this for-loop can be vectorized. If not,
+    # C++ would probably be a good fit here.
     for (i in 1:(nrow(patient_data) - 1)) {
       for (j in (i + 1):nrow(patient_data)) {
         if (patient_data[[time]][j] - patient_data[[time]][i] > patient_window) break
-        
+
         code_i <- patient_data[[code]][i]
         code_j <- patient_data[[code]][j]
         
@@ -132,7 +134,9 @@ cooccur_optimized <- function(data, id, code, time, window = NA) {
   
   # Process each patient
   patients <- unique(data[[id]])
-  
+
+  # This is another opportunity for optimization. You can do this
+  # using parallel computing!
   for (patient in patients) {
     # Filter and sort data for the patient
     patient_data <- data[get(id) == patient, .(time_value = get(time), code_value = get(code))][order(time_value)]
@@ -144,6 +148,10 @@ cooccur_optimized <- function(data, id, code, time, window = NA) {
     patient_window <- if (is.na(window)) nrow(patient_data) else window
     
     # Loop over the patient data to compute co-occurrence within the window
+    # Same here. You can see an example of vectorization similar to this
+    # in this repo: https://github.com/UofUEpiBio/PHS7045-advanced-programming/blob/f0cd7a65d0370ed8d85854e9a52825dd365d2a4c/projects/03-life/life.r#L36-L49
+    # This is fully vectorized entry-level comparison, which makes it
+    # very fast. We can talk more in class, if you want.
     for (i in 1:(nrow(patient_data) - 1)) {
       for (j in (i + 1):nrow(patient_data)) {
         # Break if the time difference exceeds the window
